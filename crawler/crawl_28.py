@@ -1,0 +1,91 @@
+# =====================================================
+# 28. 공공데이터포털
+# =====================================================
+def crawl_28(driver, aY, aM, aD, bY, bM, bD):
+
+    import selenium
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+
+    import time
+    from datetime import datetime
+
+    import pandas as pd
+
+    # 게시판 방문
+    URL = "https://www.data.go.kr/bbs/ntc/selectNoticeListView.do?pageIndex=1&originId=&atchFileId=&nttApiYn=N&searchCondition2=2&searchKeyword1=#"
+    driver.get(URL)
+
+    # 게시판에서 최근 게시글 제목/날짜/소스 추출
+    articles = driver.find_element(By.CSS_SELECTOR, 'tbody').find_elements(By.CSS_SELECTOR, 'tr')
+
+    start_date = datetime(aY, aM, aD)
+    end_date = datetime(bY, bM, bD)
+
+    date_details = []
+    title_details = []
+    title_num_details = []
+    sorce_details = []
+    article_details = []
+
+    # 아티클 목록 찾기
+    for num, article in enumerate(articles):
+        date_str = article.find_elements(By.CSS_SELECTOR, 'td')[2].text.strip().replace('-', '.')
+        try:
+            date = datetime.strptime(date_str, '%Y.%m.%d')
+            if start_date <= date <= end_date:
+                title = article.find_elements(By.CSS_SELECTOR, 'td')[1].text.strip()
+                date_details.append(date_str)
+                title_details.append(title)
+                title_num_details.append(num)
+                sorce_details.append("공공데이터포탈")
+                article_details.append(article)
+        except ValueError as e:
+            print(f"날짜 변환 오류: {e}, 원본 문자열: '{date_str}'")
+            continue
+
+    # 세부 페이지 방문하여, 원문주소/원문 추출
+    deep_url_list = []
+    deep_text_list = []
+
+    def trim_text_to_4097_tokens(text):
+        if len(text) <= 4097:
+            return text
+        else:
+            return text[:4097]
+
+
+    for num, i in zip(title_num_details, article_details) :
+        try:
+            element = articles[num].find_elements(By.CSS_SELECTOR, 'td')[1].find_element(By.CSS_SELECTOR, 'a')
+            driver.execute_script("arguments[0].click();", element)
+
+            deep_url_list.append(driver.current_url)
+            full_content = []            
+            for j in driver.find_element(By.CLASS_NAME, 'cont-area').find_elements(By.CSS_SELECTOR, "p"):
+                full_content.append(j.text.strip())
+            try:
+                for j in find_element(By.CLASS_NAME, 'file-area').find_elements(By.CSS_SELECTOR, "a"):
+                    full_content.append(j.text.strip())
+            except:
+                pass
+            full_content = "\n".join(full_content)   
+            
+        finally:
+            print('wow')
+
+        deep_text_list.append(trim_text_to_4097_tokens(full_content))
+        time.sleep(1)
+        driver.back()
+        time.sleep(1)
+
+    # 데이터프레임으로 정리 
+    df = pd.DataFrame({'날짜': date_details, '사이트': sorce_details, '제목': title_details, 
+                    # "요약" :summary_list, 
+                    '링크': deep_url_list, '원문':deep_text_list})
+    
+    # 결과값 반환
+    return df
